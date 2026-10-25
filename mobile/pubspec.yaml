@@ -1,0 +1,34 @@
+name: tim_tim
+description: Tim-Tim, your agentic AI companion (phone app).
+publish_to: "none"
+version: 1.0.0+1
+
+environment:
+  sdk: ">=2.19.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  webview_flutter: ">=4.5.0"
+  webview_flutter_android: ">=3.12.0"
+  permission_handler: ">=11.0.0"
+  url_launcher: ">=6.1.0"
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ">=2.0.0"
+  flutter_launcher_icons: ">=0.13.1"
+
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "assets/icon.png"
+  adaptive_icon_background: "#000000"
+  adaptive_icon_foreground: "assets/icon_foreground.png"
+  min_sdk_android: 21
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/icon.png

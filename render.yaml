@@ -1,0 +1,65 @@
+# Render Blueprint: New → Blueprint → pick this repo. Render reads this file, builds the Dockerfile
+# from the project root and asks for each `sync: false` value once.
+# Free instance: 0.1 CPU / 512 MB, sleeps after 15 minutes without traffic, ~1 minute cold start.
+services:
+  - type: web
+    name: tim-tim-v1-backend
+    runtime: docker
+    plan: free
+    region: singapore          # closest free region to India; keeps round-trips low
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      # --- required: same values as backend/.env ---
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_DB_URL
+        sync: false
+      - key: KEY_ENCRYPTION_SECRET
+        sync: false
+      # --- optional: only needed for legacy Supabase projects / provider keys ---
+      - key: SUPABASE_JWT_SECRET
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: CEREBRAS_API_KEY
+        sync: false
+      - key: DEEPGRAM_API_KEY
+        sync: false
+      - key: ELEVENLABS_API_KEY
+        sync: false
+      - key: TAVILY_API_KEY
+        sync: false
+      # --- limits (safe to keep in the repo) ---
+      - key: FREE_DAILY_CAP
+        value: "20"
+      - key: PRO_ROTATION_DAILY_CAP
+        value: "100"
+      - key: ORCHESTRATOR_MODE
+        value: "auto"
+
+  # The web + phone app: plain static files, free, no sleeping. After the first deploy, put its address in desktop/src/config.js (WEB_URL).
+  - type: web
+    name: tim-tim-v1-app
+    runtime: static
+    staticPublishPath: ./desktop/src
+    autoDeploy: true
+    headers:
+      - path: /sw.js
+        name: Cache-Control
+        value: no-cache
+      - path: /manifest.webmanifest
+        name: Cache-Control
+        value: no-cache
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin

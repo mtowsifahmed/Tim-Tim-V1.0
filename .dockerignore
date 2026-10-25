@@ -1,0 +1,14 @@
+# Build context is the project root (Dockerfile copies backend/ only).
+backend/.env
+backend/.venv
+backend/.pytest_cache
+backend/**/__pycache__
+backend/**/*.pyc
+backend/backend.log
+desktop
+supabase
+*.md
+.git
+.github
+.freebuff
+node_modules

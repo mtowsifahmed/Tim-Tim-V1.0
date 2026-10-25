@@ -1,0 +1,57 @@
+# Ranked free-tier providers per capability. Order = rotation order.
+# Model names and free limits change often (Google retired gemini-2.0-flash on 2026-06-01). `models` is tried in order;
+# a retired model is skipped automatically, and `discover` lets the server pick a working one from the provider's /models list.
+# Override the first choice any time with <PROVIDER>_MODEL in .env, e.g. GEMINI_MODEL=gemini-3.5-flash.
+# kind: openai     -> any OpenAI-compatible API (chat/completions, audio/transcriptions, audio/speech, embeddings)
+#       gemini     -> native generateContent: hears audio in (STT) and speaks audio out (TTS) on the Gemini key
+#       deepgram / elevenlabs -> native adapters
+#       edge       -> Microsoft Edge read-aloud voices via the unofficial `edge-tts` package (no key, no account)
+# soft_daily_limit (optional): switch away BEFORE the provider's own limit bites.
+# model_env (optional): read the model override from this variable instead of <ENV_PREFIX>_MODEL, so one provider key
+#   (Gemini) can serve several capabilities without one variable overriding every capability's model.
+llm:
+  # A free quota is per MODEL, so the ladder matters: one model can be out of daily quota while the next still answers.
+  # google no longer serves the 2.5 models to new users (HTTP 404), so they are not listed.
+  - {name: gemini,     kind: openai, base_url: "https://generativelanguage.googleapis.com/v1beta/openai", models: [gemini-3.5-flash, gemini-3.8-flash, gemini-flash-latest, gemini-3.5-flash-lite, gemini-flash-lite-latest], env: GEMINI_API_KEY, discover: "gemini"}
+  # Groq retires models without much warning (the llama-3.x ids now 404), so the ladder leads with what it actually serves.
+  - {name: groq,       kind: openai, base_url: "https://api.groq.com/openai/v1",                          models: [openai/gpt-oss-120b, openai/gpt-oss-20b, qwen/qwen3.8-27b, llama-3.3-70b-versatile, llama-3.1-8b-instant], env: GROQ_API_KEY, discover: "gpt-oss"}
+  - {name: cerebras,   kind: openai, base_url: "https://api.cerebras.ai/v1",                               models: [llama-3.3-70b, llama3.1-8b, gpt-oss-120b], env: CEREBRAS_API_KEY, discover: "llama"}
+  - {name: sambanova,  kind: openai, base_url: "https://api.sambanova.ai/v1",                              models: [Meta-Llama-3.3-70B-Instruct, Meta-Llama-3.1-8B-Instruct], env: SAMBANOVA_API_KEY, discover: "Llama"}
+  - {name: openrouter, kind: openai, base_url: "https://openrouter.ai/api/v1",                             models: ["meta-llama/llama-3.3-70b-instruct:free", "openrouter/free"], env: OPENROUTER_API_KEY, discover: ":free"}
+  - {name: mistral,    kind: openai, base_url: "https://api.mistral.ai/v1",                                models: [mistral-small-latest, open-mistral-nemo], env: MISTRAL_API_KEY, discover: "mistral"}
+  - {name: nvidia,     kind: openai, base_url: "https://integrate.api.nvidia.com/v1",                      models: [meta/llama-3.3-70b-instruct, meta/llama-3.1-8b-instruct], env: NVIDIA_API_KEY, discover: "llama"}
+  - {name: custom,     kind: openai, custom: CUSTOM_LLM}
+stt:
+  - {name: gemini-stt,   kind: gemini,   base_url: "https://generativelanguage.googleapis.com/v1beta", models: [gemini-3.5-transcribe, gemini-3.8-flash, gemini-3.5-flash-lite], env: GEMINI_API_KEY, model_env: GEMINI_STT_MODEL}
+  # Cloudflare Workers AI: 10,000 free neurons EVERY day (no card). The account id sits in the URL, so it is expanded from .env.
+  - {name: cloudflare-whisper, kind: cloudflare, base_url: "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/ai/run", models: ["@cf/openai/whisper-large-v3-turbo", "@cf/openai/whisper"], env: CLOUDFLARE_API_TOKEN, model_env: CLOUDFLARE_STT_MODEL}
+  - {name: groq-whisper, kind: openai,   base_url: "https://api.groq.com/openai/v1", models: [whisper-large-v3-turbo, whisper-large-v3], env: GROQ_API_KEY}
+  # ElevenLabs free plan includes Scribe on the same key that speaks for you.
+  - {name: elevenlabs-scribe, kind: elevenlabs, base_url: "https://api.elevenlabs.io", models: [scribe_v1], env: ELEVENLABS_API_KEY}
+  - {name: deepgram,     kind: deepgram, base_url: "https://api.deepgram.com",       model: nova-2,                 env: DEEPGRAM_API_KEY}
+  - {name: custom,       kind: openai,   custom: CUSTOM_STT}
+tts:
+  # Order matters. ElevenLabs' FREE plan is non-commercial and requires attribution, so keep it for personal testing
+  # (or leave ELEVENLABS_API_KEY empty) if you charge anyone for Pro.
+  # Gemini needs no extra key: the same GEMINI_API_KEY that answers chat can also speak.
+  - {name: gemini-tts,   kind: gemini,   base_url: "https://generativelanguage.googleapis.com/v1beta", models: [gemini-3.8-flash-tts, gemini-3.8-flash-lite-tts, gemini-2.5-flash-preview-tts], env: GEMINI_API_KEY, model_env: GEMINI_TTS_MODEL,
+     voices: {calm_male: Charon, expressive_female: Aoede}}
+  # Groq's Orpheus voices are on the key that already answers chat. Note: Groq bills it per character (not documented as free)
+  # and caps each request at 200 characters, so the adapter splits long sentences.
+  - {name: groq-tts,   kind: openai,   base_url: "https://api.groq.com/openai/v1", models: [canopylabs/orpheus-v1-english], env: GROQ_API_KEY,
+     audio_format: wav, max_chars: 190, voices: {calm_male: troy, expressive_female: hannah}}
+  # Cloudflare Workers AI voices share the free daily neuron allowance with its speech recognition.
+  - {name: cloudflare-voice, kind: cloudflare, base_url: "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/ai/run", models: ["@cf/myshell-ai/melotts", "@cf/deepgram/aura-1"], env: CLOUDFLARE_API_TOKEN, model_env: CLOUDFLARE_TTS_MODEL,
+     voices: {calm_male: orion, expressive_female: asteria}}
+  - {name: deepgram-aura, kind: deepgram, base_url: "https://api.deepgram.com",  model: aura-asteria-en,   env: DEEPGRAM_API_KEY,
+     voices: {calm_male: aura-orion-en, expressive_female: aura-asteria-en}}
+  # Only PREMADE voices work on ElevenLabs' free plan; library voices answer 402 paid_plan_required.
+  # Daniel (steady broadcast) and Jessica (playful, bright) are premade and verified on a free account.
+  - {name: elevenlabs,  kind: elevenlabs, base_url: "https://api.elevenlabs.io", model: eleven_flash_v2_5, env: ELEVENLABS_API_KEY,
+     voices: {calm_male: onwK4e9ZLuTAKqWW03F9, expressive_female: cgSgspJ2msm6clMCkdW9}}
+  - {name: custom,      kind: openai, custom: CUSTOM_TTS, voices: {calm_male: onyx, expressive_female: nova}}
+  - {name: edge-tts,    kind: edge,   model: "", no_key: true,                    # last-resort fallback: always available, unofficial
+     voices: {calm_male: en-US-GuyNeural, expressive_female: en-US-AriaNeural}}
+embed:                                   # long-term memory search (optional; keyword search is used if none work)
+  - {name: gemini,   kind: openai, base_url: "https://generativelanguage.googleapis.com/v1beta/openai", models: [gemini-embedding-001, gemini-embedding-2], env: GEMINI_API_KEY, dimensions: 768}
+  - {name: custom,   kind: openai, custom: CUSTOM_EMBED, dimensions: 768}

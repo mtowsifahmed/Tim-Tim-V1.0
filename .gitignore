@@ -1,0 +1,17 @@
+.env
+*.pyc
+__pycache__/
+node_modules/
+target/
+.venv/
+build/
+.dart_tool/
+*.bak
+.pytest_cache/
+desktop/src-tauri/gen/
+mobile/build/
+mobile/_scaffold/
+mobile/android/local.properties
+release/
+.env.*
+!.env.example
