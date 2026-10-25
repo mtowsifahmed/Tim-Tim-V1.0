@@ -4,9 +4,9 @@
   const TT = window.TT || {}, cfg = window.TIMTIM_CONFIG || {}, VERSION = cfg.APP_VERSION || '1.0.0', BRAND = cfg.CREATED_BY || 'Zaftan Studios';
   const inTauri = !!(window.__TAURI__ && window.__TAURI__.core);
   const css = document.createElement('style');
-  css.textContent = '.logo{background:#000 url(icons/logo-mark.png) center/cover !important;box-shadow:0 0 18px rgba(255,90,120,.35) !important}.logo b{display:none}' +
-    '.as-logo{background:#000 url(icons/logo-mark.png) center/cover !important;color:transparent !important}' +
-    '.gate-logo{display:block;width:min(260px,70%);margin:0 auto 4px;border-radius:26px;box-shadow:0 18px 50px rgba(120,80,255,.25)}' +
+  css.textContent = '.logo{background:#07070a url(icons/logo-mark.png) center/cover !important;box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--accent) 40%,transparent),0 12px 30px -18px var(--accent) !important}.logo b{display:none}' +
+    '.as-logo{background:#07070a url(icons/logo-mark.png) center/cover !important;color:transparent !important;box-shadow:0 8px 22px -14px var(--accent),inset 0 0 0 1px color-mix(in srgb,var(--accent) 30%,transparent) !important}' +
+    '.gate-logo{display:block;width:min(230px,64%);margin:0 auto 10px;border-radius:24px;box-shadow:0 24px 60px -34px var(--accent)}' +
     '.legal{font-size:12px;color:var(--muted);margin:14px 0 0 !important}.legal a,.about a{color:var(--accent);text-decoration:none;cursor:pointer}.legal a:hover,.about a:hover{text-decoration:underline}' +
     '.yd .row{flex-wrap:wrap;gap:8px;justify-content:flex-start}.yd .confirm{display:none;padding:12px;border-radius:12px;background:var(--input);border:1px solid #f43f5e66;margin-top:6px}.yd .confirm.on{display:block}' +
     '.yd .confirm input{width:100%;margin:8px 0}.yd .msg{font-size:12px;margin-top:6px;min-height:16px}.yd .msg.bad{color:#fb7185}.yd .msg.ok{color:#34d399}.about{font-size:12px;color:var(--muted);line-height:1.7}';

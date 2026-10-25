@@ -6,10 +6,18 @@
   const clock = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
   // ───────── settings (local + synced to your account) ─────────
-  const DEFAULTS = { tz: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC', theme: 'dark', accent: 'red', figure: 'sphere', colormode: 'accent', c1: '#8b7bff', c2: '#22d3ee', voice: 'expressive_female', tone: 60, humor: 40, formal: 30, uname: '',
+  const DEFAULTS = { tz: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC', theme: 'onyx', accent: 'gold', figure: 'sphere', colormode: 'accent', c1: '#8b7bff', c2: '#22d3ee', voice: 'expressive_female', tone: 60, humor: 40, formal: 30, uname: '',
     mode: 'ptt', wake: 'hey tim', speak: 'on', float: 'off', micId: '' };
   let S = { ...DEFAULTS, url: CFG.BACKEND_WS_URL || 'ws://127.0.0.1:8000/ws' };
   try { S = { ...S, ...JSON.parse(localStorage.getItem('timtim.settings') || '{}') }; } catch (_) {}
+  // v1 renamed the looks: keep settings saved by earlier versions working.
+  const THEME_ALIAS = { dark: 'onyx', light: 'platinum', onyx: 'onyx', platinum: 'platinum' };
+  const ACCENT_ALIAS = { red: 'gold', blue: 'sapphire', green: 'emerald', gold: 'gold', sapphire: 'sapphire', ember: 'ember', violet: 'violet', emerald: 'emerald' };
+  S.theme = THEME_ALIAS[S.theme] || 'onyx';
+  S.accent = ACCENT_ALIAS[S.accent] || 'gold';
+  const LOOKS = { onyx: 'Onyx', platinum: 'Platinum' };
+  // A look and its signature accent travel together, or they can be mixed on purpose.
+  const pairAccent = (look, accent) => (look === 'platinum' && accent === 'gold') ? 'sapphire' : (look === 'onyx' && accent === 'sapphire') ? 'gold' : accent;
   let syncT = null, applying = false;
   const persist = () => { const { url, ...rest } = S; try { localStorage.setItem('timtim.settings', JSON.stringify(rest)); } catch (_) {}
     if (applying || !TimAuth.getToken()) return; clearTimeout(syncT); syncT = setTimeout(() => net.api('/settings', { method: 'PUT', body: { persona: rest } }).catch(() => {}), 1200); };
@@ -26,8 +34,10 @@
   const root = document.documentElement, css = n => getComputedStyle(root).getPropertyValue(n).trim();
   const orb = new TimOrb($('#orb'), { figure: S.figure, color1: S.c1, color2: S.c2, colorMode: S.colormode });
   const map = new TimMap($('#map'), { color: '#2dd4bf' }), globe = new TimGlobe($('#globe'), { color: '#3b82f6', accent: '#ef4444', speed: 0.08 });
-  function look() { root.dataset.theme = S.theme; root.dataset.accent = S.accent; orb.setLight(S.theme === 'light'); orb.setAccent(css('--accent'), css('--accent2')); orb.setColorMode(S.colormode); globe.setColors(css('--accent2'), css('--accent'));
-    $('#theme-t').textContent = S.theme.toUpperCase(); }
+  function look() { root.dataset.theme = S.theme; root.dataset.accent = S.accent; orb.setLight(S.theme === 'platinum'); orb.setAccent(css('--accent'), css('--accent2')); orb.setColorMode(S.colormode);
+    globe.setColors(css('--accent2'), css('--accent')); map.setColor(css('--accent2'));
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', S.theme === 'platinum' ? '#eff1f5' : '#060608');
+    const t = $('#theme-t'); if (t) t.textContent = (LOOKS[S.theme] || S.theme).toUpperCase(); }
   look();
 
   // ───────── agents ─────────
@@ -191,6 +201,23 @@
   const tickUtc = () => { const d = new Date(); $('#utc').textContent = 'UTC ' + String(d.getUTCHours()).padStart(2, '0') + ':' + String(d.getUTCMinutes()).padStart(2, '0'); }; tickUtc(); setInterval(tickUtc, 15000);
   $('#mz-in').onclick = () => map.zoomBy(1.4); $('#mz-out').onclick = () => map.zoomBy(1 / 1.4); $('#mz-nav').onclick = () => map.reset();
 
+  // ───────── sections (rail): Core · Team · World ─────────
+  const TITLES = { core: 'Core', team: 'Agent Studio', world: 'World Monitor' };
+  function focusView(v) {
+    if (!TITLES[v]) v = 'core';
+    document.body.dataset.view = v;
+    $$('.rail-nav .rail-btn').forEach(b => b.classList.toggle('on', b.dataset.view === v));
+    const t = $('#view-title'); if (t) t.textContent = TITLES[v];
+    TT.view = v;
+    // canvas work is sized from its container, so it has to be told the box changed
+    window.dispatchEvent(new Event('resize'));
+    if (v === 'world') loadWorld();
+  }
+  TT.focusView = focusView;
+  $$('.rail-nav .rail-btn').forEach(b => b.onclick = () => focusView(b.dataset.view));
+  focusView(document.body.dataset.view || 'core');
+  if ($('#world-expand')) $('#world-expand').onclick = () => { $('#sheet-world').hidden = false; };
+
   // ───────── menus, tabs, sheets ─────────
   const menus = ['#conn-menu', '#theme-menu', '#notes-menu', '#as-menu'];
   const toggle = id => { const el = $(id), open = el.hidden; menus.forEach(m => $(m).hidden = true); el.hidden = !open; if (id === '#conn-menu' && open) { renderConn(); if (net.ready()) { net.send({ type: 'ping' }); } } if (id === '#notes-menu') $('#bell-dot').hidden = true; };
@@ -218,7 +245,13 @@
   // ───────── settings widgets ─────────
   function seg(id, key, cb) { const el = $(id), mark = () => el.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === String(S[key])));
     el.addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; S[key] = b.dataset.v; mark(); persist(); cb && cb(S[key]); }); el._mark = mark; mark(); }
-  seg('#seg-theme', 'theme', () => look()); seg('#seg-accent', 'accent', () => look()); seg('#seg-figure', 'figure', v => orb.setFigure(v)); seg('#seg-colormode', 'colormode', v => { orb.setColorMode(v); $('#row-colors').style.opacity = v === 'custom' ? 1 : .4; });
+  const setLook = v => { S.theme = v; S.accent = pairAccent(v, S.accent); markLooks(); look(); persist(); };
+  function markLooks() { ['#seg-theme', '#seg-look'].forEach(i => { const el = $(i); if (el) el.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === S.theme)); });
+    const sw = $('#seg-accent'); if (sw) sw.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === S.accent)); }
+  [['#seg-theme', 'click'], ['#seg-look', 'click']].forEach(([sel]) => { const el = $(sel); if (!el) return;
+    el.addEventListener('click', e => { const b = e.target.closest('button'); if (b && b.dataset.v) setLook(b.dataset.v); }); });
+  seg('#seg-accent', 'accent', v => { S.accent = pairAccent(S.theme, v); markLooks(); look(); persist(); });
+  seg('#seg-figure', 'figure', v => orb.setFigure(v)); seg('#seg-colormode', 'colormode', v => { orb.setColorMode(v); $('#row-colors').style.opacity = v === 'custom' ? 1 : .4; });
   seg('#seg-voice', 'voice', () => renderConn()); seg('#seg-speak', 'speak', applySpeak); seg('#seg-float', 'float', v => setFloat(v === 'on'));
   seg('#seg-mode', 'mode', async v => { await V.setMode(v); $('#mic').title = v === 'ptt' ? 'Hold to talk (Space)' : 'Click to turn the microphone on/off'; });
   ['c1', 'c2'].forEach(k => { const el = $('#' + k); el.value = S[k]; el.addEventListener('input', () => { S[k] = el.value; orb.setColors(S.c1, S.c2); persist(); }); });
@@ -238,7 +271,7 @@
   $('#url').value = S.url; $('#url').addEventListener('input', e => { S.url = e.target.value.trim(); net.url = S.url; });
   $('#pair-btn').onclick = () => TT.panels.openPair(); $('#acct-upgrade').onclick = () => { closeDrawer(); $('#owner-contact').textContent = CFG.OWNER_CONTACT || '(ask the app owner)'; $('#up-email').textContent = TimAuth.getEmail(); $('#upgrade').hidden = false; };
   $('#close-upgrade').onclick = () => $('#upgrade').hidden = true;
-  function applyAll() { look(); orb.setFigure(S.figure); orb.setColors(S.c1, S.c2); ['#seg-theme', '#seg-accent', '#seg-figure', '#seg-colormode', '#seg-voice', '#seg-speak', '#seg-float', '#seg-mode'].forEach(i => $(i)._mark());
+  function applyAll() { look(); orb.setFigure(S.figure); orb.setColors(S.c1, S.c2); markLooks(); ['#seg-theme', '#seg-accent', '#seg-figure', '#seg-colormode', '#seg-voice', '#seg-speak', '#seg-float', '#seg-mode'].forEach(i => { if ($(i)) $(i)._mark(); });
     ['c1', 'c2'].forEach(k => $('#' + k).value = S[k]); [['tone', 'v-tone'], ['humor', 'v-humor'], ['formal', 'v-formal']].forEach(([k, v]) => { $('#' + k).value = S[k]; $('#' + v).textContent = S[k]; }); $('#uname').value = S.uname; $('#wake').value = S.wake;
     $('#row-colors').style.opacity = S.colormode === 'custom' ? 1 : .4; V.wake = S.wake.toLowerCase(); V.mode = S.mode; V.deviceId = S.micId || ''; applySpeak(); renderConn(); }
   $('#row-colors').style.opacity = S.colormode === 'custom' ? 1 : .4; V.wake = S.wake.toLowerCase(); V.mode = S.mode; applySpeak();
