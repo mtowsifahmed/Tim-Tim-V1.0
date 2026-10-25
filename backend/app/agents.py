@@ -46,6 +46,7 @@ class State(TypedDict, total=False):
     history: list
     persona: dict
     notes: list
+    device: str
     agent: str
     skill: dict | None
     action_result: str | None
@@ -78,8 +79,20 @@ def now_line(p: dict) -> str:
     return s + (f" The user's name is {name}; use it occasionally, not in every sentence." if name else "")
 
 
-def build_system(agent: str, persona: dict, memories: list[str], notes: list[str], web: str = "", deep: bool = False) -> str:
+def device_line(device: str) -> str:
+    """A phone browser can open sites but cannot launch programs: saying so stops the model promising a Windows-only action."""
+    if device == "mobile":
+        return ("The user is on their phone right now. You cannot control a computer from here. What works: opening a website "
+                "(open_url), searching the web, WhatsApp, and reminders. Never claim to have opened a program, locked a screen or "
+                "touched a file; if they ask for that, say it needs the Tim-Tim desktop app on their computer.")
+    return ""
+
+
+def build_system(agent: str, persona: dict, memories: list[str], notes: list[str], web: str = "", deep: bool = False,
+                 device: str = "") -> str:
     parts = [identity_block(), f"You are Tim-Tim, the user's AI companion. {AGENTS[agent]['prompt']}", persona_style(persona), VOICE_RULES, now_line(persona)]
+    if device_line(device):
+        parts.append(device_line(device))
     if memories:
         parts.append("Things you know about the user (use only when relevant, never recite them):\n" + "\n".join(f"- {m}" for m in memories))
     if notes:
@@ -207,7 +220,8 @@ async def respond(state: State, config) -> dict:
         notes.append("You tried to check the live web for this but could not get results. Say plainly that you couldn't check live sources right now, "
                      "and give only what you know with a warning that it may be out of date. Never pretend to have current information.")
     memories = await io.memory_search(state["text"], AGENTS[agent]["scopes"])
-    msgs = [{"role": "system", "content": build_system(agent, state.get("persona", {}), memories, notes, state.get("web_context", ""), bool(state.get("deep")))},
+    msgs = [{"role": "system", "content": build_system(agent, state.get("persona", {}), memories, notes,
+                                                       state.get("web_context", ""), bool(state.get("deep")), state.get("device", ""))},
             *state.get("history", [])[-12:], {"role": "user", "content": state["text"]}]
     reply = []
     async for tok in io.llm_stream(msgs):

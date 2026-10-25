@@ -18,6 +18,33 @@ from .providers.errors import NoProviderAvailable, ProviderError
 from .providers.rotation import Rotation
 
 TURN_TIMEOUT = 90           # seconds; a stalled provider must not leave the app spinning
+# Skills the device you are talking to can run by itself (no desktop app needed).
+RUNS_ON_CALLING_DEVICE = {"set_reminder", "open_url", "search_web", "whatsapp_open", "whatsapp_message"}
+# "open youtube" on a phone: the site hands off to the installed app, so the request still works there.
+MOBILE_SITES = {
+    "youtube": "https://www.youtube.com", "yt": "https://www.youtube.com", "google": "https://www.google.com",
+    "gmail": "https://mail.google.com", "mail": "https://mail.google.com", "maps": "https://maps.google.com",
+    "whatsapp": "https://web.whatsapp.com", "instagram": "https://www.instagram.com", "insta": "https://www.instagram.com",
+    "facebook": "https://www.facebook.com", "fb": "https://www.facebook.com", "twitter": "https://x.com",
+    "x": "https://x.com", "reddit": "https://www.reddit.com", "spotify": "https://open.spotify.com",
+    "chatgpt": "https://chatgpt.com", "netflix": "https://www.netflix.com", "amazon": "https://www.amazon.com",
+    "github": "https://github.com", "wikipedia": "https://www.wikipedia.org", "telegram": "https://web.telegram.org",
+    "discord": "https://discord.com/app", "tiktok": "https://www.tiktok.com", "linkedin": "https://www.linkedin.com",
+    "pinterest": "https://www.pinterest.com", "snapchat": "https://web.snapchat.com", "chatgpt app": "https://chatgpt.com",
+}
+
+
+def _mobile_site(app: str) -> str | None:
+    """Map an app name the user asked to open to the website that opens it on a phone."""
+    a = re.sub(r"[._-]", " ", (app or "").strip().lower())
+    a = re.sub(r"\b(app|application|the)\.?\b", " ", a)
+    a = a.replace("exe", " ").strip()
+    if not a:
+        return None
+    for key, url in MOBILE_SITES.items():
+        if key == a or re.search(rf"\b{re.escape(key)}\b", a):
+            return url
+    return None
 ACTION_TIMEOUT = 60         # how long the desktop gets to approve an action before the turn moves on
 TTS_GRACE = 20              # speech may lag the text, but it can never hold the reply open
 DEFAULT_PERSONA = {"tone": 60, "humor": 40, "formal": 30, "voice": "expressive_female", "tz": "UTC", "uname": "", "lang": "en-US", "web": "auto"}
@@ -121,12 +148,21 @@ class TurnIO:
             if f:
                 f.cancel()
 
-    # ---- desktop automation ----
+    # ---- device actions ----
     async def request_action(self, skill: str, args: dict, agent: str = "chat") -> dict:
+        # A phone can't launch another app, but the app's website opens the app: "open youtube" works there.
+        if self.origin.device == "mobile" and skill == "open_app":
+            site = _mobile_site(str(args.get("app") or ""))
+            if site:
+                skill, args = "open_url", {"url": site}
         desk = self.hub.desktop(self.user.id)
-        if not desk and skill in ("set_reminder", "open_url", "search_web", "whatsapp_open", "whatsapp_message") and self.origin.device in ("mobile", "desktop"):
+        if not desk and skill in RUNS_ON_CALLING_DEVICE and self.origin.device in ("mobile", "desktop"):
             desk = self.origin                                      # these run inside the app itself, so the device you are talking on can do them
         if not desk:
+            if self.origin.device == "mobile":
+                return {"ok": False, "error": f"{skill} only runs on the computer through the Tim-Tim desktop app, "
+                                               "and it isn't open right now. On this phone I can open websites, search the web, "
+                                               "message someone on WhatsApp or set a reminder — for example, 'open youtube.com'."}
             return {"ok": False, "error": "No desktop app is connected, so I can't do that on the computer."}
         aid = uuid.uuid4().hex[:12]
         fut = asyncio.get_running_loop().create_future()
@@ -180,7 +216,7 @@ async def execute_turn(io: TurnIO, graph, text: str) -> None:
             notes.append(f"You just saved this to the user's memory: {m.group(1).strip()[:200]}" if saved else "You could not save that to memory (limit reached).")
         except Exception:
             notes.append("You could not save that to memory right now.")
-    state = {"text": text, "history": list(history), "persona": io.persona, "notes": notes}
+    state = {"text": text, "history": list(history), "persona": io.persona, "notes": notes, "device": io.origin.device}
     try:
         await graph.ainvoke(state, config={"configurable": {"io": io}})
     except asyncio.CancelledError:

@@ -10,7 +10,7 @@
 - **Memory**: remembers what you ask it to, editable by you.
 - **Computer actions** (desktop app): open apps, search, files, reminders, volume, typing... every action asks first.
 - **WhatsApp by voice**: "message Mom on WhatsApp..." opens the chat with your text ready, after you confirm ([what it can and can't do](WHATSAPP.md)).
-- **Free to start**: free daily limit on shared free AI services; **Pro** (granted by the owner) lets you add your own API keys.
+- **Your own free key**: sign in and paste one free Google AI Studio key; it covers chat, voice and speech recognition, and your usage never touches anyone else's quota. **Pro** (granted by the owner) may instead run on the operator's services, up to a daily limit.
 - **Everywhere**: Windows app, Android app, and any browser (install it from the browser like an app).
 
 ## Run it

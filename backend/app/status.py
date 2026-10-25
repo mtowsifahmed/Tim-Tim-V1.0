@@ -13,7 +13,9 @@ async def build_status(user: CurrentUser, rot: Rotation) -> dict:
     sources = {cap: (p[0].source if p else None) for cap, p in plans.items()}
     uses_rotation = any(s == "rotation" for s in sources.values())
 
-    cap = policy.daily_cap(user.role, settings.free_daily_cap, settings.pro_rotation_daily_cap)
+    own_key_required = policy.requires_own_key(user.role)
+    # A turn on the user's own key costs the app nothing, so it is never counted against a daily cap.
+    cap = None if own_key_required else policy.daily_cap(user.role, settings.free_daily_cap, settings.pro_rotation_daily_cap)
     used = await db.pool().fetchval(
         "select coalesce(turns,0) from public.usage_daily where user_id=$1 and day=(now() at time zone 'utc')::date",
         user.id) or 0
@@ -27,8 +29,12 @@ async def build_status(user: CurrentUser, rot: Rotation) -> dict:
         mode = "pro_own_keys"
     elif user.role == "pro":
         mode = "pro_mixed"
+    elif not plans["llm"]:
+        mode = "free_no_key"
     else:
-        mode = "free"
+        mode = "free_own_keys"
     return {"email": user.email, "role": user.role, "plan": user.plan, "mode": mode,
             "daily_cap": cap, "used_today": used, "remaining_today": remaining,
-            "providers": providers, "key_source": sources}
+            "providers": providers, "key_source": sources,
+            "own_key_required": own_key_required,          # free: the app's keys are never used
+            "needs_key": own_key_required and not plans["llm"]}

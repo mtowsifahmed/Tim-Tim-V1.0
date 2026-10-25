@@ -85,7 +85,8 @@
     // system status
     const s = $('#sysstat'); let t, cls = '';
     if (st === 'demo') { t = 'Demo mode (offline preview)'; cls = 'warn'; } else if (st === 'signedout' || st === 'expired') { t = 'Please sign in'; cls = 'warn'; } else if (st === 'connecting') { t = 'Connecting to the backend…'; cls = 'warn'; }
-    else if (!ok) { t = 'Backend unreachable. Retrying…'; cls = 'bad'; } else if (me && me.providers && !me.providers.llm) { t = 'No language model available right now'; cls = 'bad'; }
+    else if (!ok) { t = 'Backend unreachable. Retrying…'; cls = 'bad'; } else if (me && me.needs_key) { t = 'Add your own free Google key to start'; cls = 'warn'; }
+    else if (me && me.providers && !me.providers.llm) { t = 'No language model available right now'; cls = 'bad'; }
     else if (me && me.providers && !me.providers.stt) { t = 'Chat works. Speech recognition has no provider'; cls = 'warn'; } else { t = 'All systems operational'; }
     s.className = 'card sysstat ' + cls; $('#sys-t').textContent = t; $('#sys-dot').className = 'dot ' + (cls === 'bad' ? 'bad' : cls === 'warn' ? '' : 'ok');
     $('#presence').textContent = presence.mobile_online ? 'Phone: connected' : 'Phone: not connected';
@@ -100,12 +101,15 @@
     if (e.state === 'error' && e.first) msg('err', 'Could not reach the backend. Is it running?'); renderConn(); });
   TT.on('latency', ms => { const w = $('#wifi'); w.className = 'ibtn ' + (ms < 150 ? 'good' : ms < 400 ? 'mid' : 'bad'); w.title = 'Latency ' + ms + ' ms'; renderConn(); });
   function setStatus(s) { TT.me = s; conn.state = 'ok'; $('#admin-btn').hidden = !['owner', 'moderator'].includes(s.role); $('#acct-email').textContent = s.email; $('#acct-plan').textContent = (ROLE[s.role] || s.role) + (s.role === 'free' ? ' plan' : '');
-    $('#acct-quota').textContent = s.remaining_today == null ? 'No daily limit' : `${s.remaining_today} of ${s.daily_cap} turns left today (resets midnight UTC)`; $('#acct-upgrade').hidden = s.role !== 'free'; renderConn(); }
+    $('#acct-quota').textContent = s.needs_key ? 'Add your own free Google key to start'
+      : s.remaining_today == null ? (s.own_key_required ? 'Your own key · no daily limit' : 'No daily limit')
+      : `${s.remaining_today} of ${s.daily_cap} turns left today (resets midnight UTC)`; $('#acct-upgrade').hidden = s.role !== 'free'; renderConn(); }
   TT.on('status', setStatus); TT.on('provider', p => { if (TT.me) { TT.me.providers[p.capability] = p.name; TT.me.key_source[p.capability] = p.source; renderConn(); } });
   TT.on('presence', p => { presence = p; renderConn(); });
-  let keysRole = null;
+  let keysRole = null, keyPrompted = false;
   TT.on('ready', async m => { conn.state = 'ok'; presence = m; if (turnActive) endTurn();   // reconnected: no stale 'thinking' orb
     setStatus(m.status); loadWorld(); TT.panels.loadNotes(); TT.panels.renderKeys(m.status.role); keysRole = m.status.role;
+    if (m.status.needs_key && !keyPrompted) { keyPrompted = true; setTimeout(openKeys, 500); }
     try { const { persona } = await net.api('/settings'); if (persona && Object.keys(persona).length) { applying = true; Object.assign(S, persona); applyAll(); applying = false; } else persist(); } catch (_) {}
     try { const { actions } = await net.api('/automation'); TT.actions.hist = actions; } catch (_) {} });
 
@@ -119,8 +123,12 @@
   TT.on('done', () => { endTurn(); V.turnFinished(); });
   TT.on('interrupted', () => { endTurn(); V.turnFinished(); });
   TT.on('speech_end', () => derive());
-  TT.on('error', m => { endTurn(); V.turnFinished(); V.interrupt(); msg('err', m.message); if (TT.speakLocal) TT.speakLocal(m.message); if (m.code === 'daily_cap_reached') { conn.state = 'ok'; $('#sysstat').className = 'card sysstat warn'; $('#sys-t').textContent = 'Daily limit reached. Resets at midnight UTC'; } });
-  TT.on('stt_empty', () => { endTurn(); V.turnFinished(); if (V.mode === 'ptt') msg('err', "I didn't catch that. Try again a little closer to the mic."); });
+  TT.on('error', m => { endTurn(); V.turnFinished(); V.interrupt(); msg('err', m.message); if (TT.speakLocal) TT.speakLocal(m.message);
+    if (m.code === 'daily_cap_reached') { conn.state = 'ok'; $('#sysstat').className = 'card sysstat warn'; $('#sys-t').textContent = 'Daily limit reached. Resets at midnight UTC'; }
+    if (m.code === 'key_required') openKeys(); });
+  // A clip with no speech in it: say what to actually check instead of "didn't catch that".
+  TT.on('stt_empty', () => { endTurn(); V.turnFinished(); if (V.mode === 'ptt') msg('err', 'I could not hear any words in that clip. Hold the mic button while you talk, and pick the right microphone in Settings → Voice.'); });
+  TT.on('micsilent', () => { endTurn(); V.turnFinished(); msg('err', 'Your microphone is sending silence. Check that it is not muted or covered, allow the microphone for this site, then try again.'); });
   TT.on('wake_ignored', () => { endTurn(); V.turnFinished(); });
   TT.on('tts_error', m => note(m.message));
   TT.on('task', t => { actCard(t); renderTasks(); });
@@ -138,7 +146,10 @@
   const mic = $('#mic'); let held = false;
   const down = async e => { if (S.mode !== 'ptt' || TT.paused) return; e && e.preventDefault(); if (demo()) { held = true; fakeListen(true); return; } if (!net.ready()) { msg('err', 'Not connected yet.'); return; } held = true; await V.pttStart(); };
   const up = () => { if (!held) return; held = false; if (demo()) { fakeListen(false); return; } V.pttStop(); };
-  mic.addEventListener('pointerdown', down); mic.addEventListener('pointerup', up); mic.addEventListener('pointercancel', up); mic.addEventListener('pointerleave', up);
+  mic.addEventListener('pointerdown', down); mic.addEventListener('pointerup', up); mic.addEventListener('pointercancel', up);
+  // Touch pointers are captured by the button, so pointerup always arrives. Treating pointerleave as a release
+  // cut phone clips off the moment a finger drifted, which sounded like "it heard nothing".
+  mic.addEventListener('pointerleave', e => { if (e.pointerType !== 'touch') up(); });
   mic.addEventListener('click', async () => { if (S.mode === 'ptt' || TT.paused) return; if (V.micOn) { V.stopMic(); } else if (net.ready()) await V.startMic(); else msg('err', 'Not connected yet.'); });
   const typing = () => ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName) || document.activeElement.isContentEditable;
   // Space starts push-to-talk from anywhere, EXCEPT while typing or while a panel/modal is open (there Space is a normal key).
@@ -194,6 +205,8 @@
   $$('[data-go="world"]').forEach(b => b.onclick = () => { $('#sheet-world').hidden = false; });
   $('#admin-btn').onclick = () => TT.panels.openAdmin();
   const openDrawer = () => { $('#drawer').hidden = false; if (TT.me) TT.panels.renderKeys(TT.me.role); }, closeDrawer = () => $('#drawer').hidden = true;
+  // Where a blocked turn sends people: straight to the key box, not to the top of the settings list.
+  const openKeys = () => { openDrawer(); setTimeout(() => { const b = document.querySelector('#keys-box .keyone') || $('#keys-box'); b.scrollIntoView({ behavior: 'smooth', block: 'center' }); const i = $('#one-key'); if (i) i.focus(); }, 150); };
   $('#settings-btn').onclick = openDrawer; $('#close-settings').onclick = closeDrawer; $('#drawer').addEventListener('click', e => { if (e.target.id === 'drawer') closeDrawer(); });
   const toPers = () => { openDrawer(); setTimeout(() => $('#h-pers').scrollIntoView({ behavior: 'smooth' }), 60); };
   $('#sat-set').onclick = openDrawer; $('#sat-pers').onclick = toPers; $('#sat-skill').onclick = () => { TT.panels.renderSkills(); $('#sheet-skills').hidden = false; };

@@ -1,21 +1,40 @@
-/* Panels backed by the backend: API keys (Pro), memory notes, skill permissions, admin panel, phone pairing. */
+/* Panels backed by the backend: API keys (own key, required on the free plan), memory notes, skill permissions,
+   admin panel, phone pairing. */
 (function () {
   const TT = window.TT, $ = s => document.querySelector(s), api = (p, o) => TT.net.api(p, o);
   const esc = t => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const P = TT.panels = {};
   const ago = iso => { const m = Math.max(0, Math.round((Date.now() - new Date(iso)) / 60000)); return m < 1 ? 'just now' : m < 60 ? m + 'm ago' : m < 1440 ? Math.round(m / 60) + 'h ago' : Math.round(m / 1440) + 'd ago'; };
 
-  // ───────── API keys (Pro) ─────────
+  // ───────── API keys (everyone: the free plan runs only on your own key) ─────────
   const CAPS = [['llm', 'Language model (chat)'], ['stt', 'Speech-to-text'], ['tts', 'Text-to-speech']];
+  const SHARED_ROLES = ['pro', 'moderator', 'owner'];
   P.renderKeys = async role => {
-    const pro = ['pro', 'moderator', 'owner'].includes(role); $('#keys-locked').hidden = pro; $('#keys-box').innerHTML = ''; $('#keys-tag').hidden = !pro && false;
-    if (!pro) return;
+    const shared = SHARED_ROLES.includes(role);           // Pro/staff may keep using the app's providers
+    $('#keys-locked').hidden = true;
+    $('#keys-tag').textContent = shared ? 'Optional' : 'Required';
+    $('#keys-box').innerHTML = '';
     let provs = {}, saved = [];
     try { [provs, saved] = await Promise.all([api('/providers'), api('/keys')]); } catch (e) { $('#keys-box').innerHTML = `<p class="hint">Could not load keys: ${esc(e.message)}</p>`; return; }
-    $('#keys-box').innerHTML = CAPS.map(([cap, label]) => { const s = saved.find(k => k.capability === cap);
-      return `<div class="keyrow" data-cap="${cap}"><b>${label}<span class="st ${s ? 'ok' : ''}" data-st>${s ? 'Using your ' + esc(s.provider) + ' key ' + esc(s.masked) : 'Using the shared free providers'}</span></b>
+    const oneCard = shared ? '' : `<div class="keyone"><b>Your own free Google key<span class="st" id="one-st">Covers chat, speech and voice</span></b>
+      <p class="hint">Get one in about a minute at <b>aistudio.google.com/apikey</b> → <b>Create API key</b>. It costs nothing, and your usage stays yours: the free plan never uses the owner's keys.</p>
+      <div class="kr"><input type="password" id="one-key" placeholder="Paste your key (starts with AIza…)" autocomplete="off"><button class="primary" id="one-save" type="button">Save key</button></div></div>`;
+    $('#keys-box').innerHTML = oneCard + CAPS.map(([cap, label]) => { const s = saved.find(k => k.capability === cap);
+      const state = s ? 'Using your ' + esc(s.provider) + ' key ' + esc(s.masked) : shared ? 'Using the shared free providers' : 'No key yet';
+      return `<div class="keyrow" data-cap="${cap}"><b>${label}<span class="st ${s ? 'ok' : ''}" data-st>${state}</span></b>
         <div class="kr"><select data-prov>${(provs[cap] || []).map(p => `<option ${s && s.provider === p ? 'selected' : ''}>${p}</option>`).join('')}</select><input type="password" data-key placeholder="${s ? 'Paste a new key to replace' : 'Paste your API key'}" autocomplete="off"></div>
         <div class="ka"><button class="ghost" data-act="validate">Validate</button><button class="ghost" data-act="save">Save</button>${s ? '<button class="ghost danger" data-act="remove">Remove key</button>' : ''}</div></div>`; }).join('');
+    const saveOne = $('#one-save');
+    if (saveOne) saveOne.addEventListener('click', async () => {
+      const key = $('#one-key').value.trim(), st = $('#one-st');
+      const say = (t, cls) => { st.textContent = t; st.className = 'st ' + (cls || ''); };
+      if (key.length < 8) { say('Paste your key first', 'bad'); return; }
+      saveOne.disabled = true; say('Checking with Google…');
+      try { const r = await api('/keys/one-key', { method: 'POST', body: { key } }); say('Saved ' + r.masked + ' ✓', 'ok'); $('#one-key').value = '';
+        setTimeout(() => P.renderKeys(role), 700); P.refreshStatus(); }
+      catch (err) { say(err.message, 'bad'); }
+      finally { saveOne.disabled = false; }
+    });
     $('#keys-box').querySelectorAll('.keyrow').forEach(row => row.addEventListener('click', async e => {
       const act = e.target.dataset.act; if (!act) return; const cap = row.dataset.cap, st = row.querySelector('[data-st]'), key = row.querySelector('[data-key]').value.trim(), provider = row.querySelector('[data-prov]').value;
       const say = (t, cls) => { st.textContent = t; st.className = 'st ' + (cls || ''); };

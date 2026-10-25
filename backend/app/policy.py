@@ -16,11 +16,22 @@ def bypasses_limits(role: str) -> bool:
 
 
 def can_use_byok(role: str) -> bool:
+    """Everyone may attach their own key. Since v1 the free plan runs ONLY on the user's own key."""
+    return True
+
+
+def requires_own_key(role: str) -> bool:
+    """The free plan never spends the app owner's provider quota, so it must bring its own key."""
+    return not uses_shared_keys(role)
+
+
+def uses_shared_keys(role: str) -> bool:
+    """Whose key pays for a turn: the app's rotating free-tier keys, or the user's own."""
     return role in {"pro", "owner", "moderator"}
 
 
 def daily_cap(role: str, free_cap: int, pro_cap: int) -> int | None:
-    """Turns/day on the app's rotating keys. None = unlimited."""
+    """Turns/day on the app's rotating keys. None = unlimited. Only shared-key turns are ever counted."""
     if bypasses_limits(role):
         return None
     return pro_cap if role == "pro" else free_cap

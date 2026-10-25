@@ -92,6 +92,7 @@ class StubIO:
         self.aborted, self.finished = False, False
         self.hub = type("H", (), {"history": lambda self, uid: []})()
         self.user = type("U", (), {"id": "u", "role": "free"})()
+        self.origin = type("O", (), {"device": "desktop"})()
         self.persona, self.reply_so_far = {}, []
 
     async def abort(self): self.aborted = True

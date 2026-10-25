@@ -60,8 +60,12 @@ class Rotation:
                     try:
                         return [Resolved(spec, crypto.decrypt(row["key_cipher"]), "byok")]
                     except Exception as e:                        # noqa: BLE001 - a stored key we can't read must not break the turn
-                        log.warning("could not read the stored %s key for %s (%s); using the shared providers",
+                        log.warning("could not read the stored %s key for %s (%s)",
                                     capability, user_id, type(e).__name__)
+        if not policy.uses_shared_keys(role):
+            # The free plan runs on the user's own key only: the app's keys are never spent on it.
+            # (No BYOK for embeddings, so free accounts use keyword memory search instead.)
+            return []
         state = {r["provider"]: r["exhausted_until"] for r in await db.pool().fetch(
             "select provider, exhausted_until from public.provider_state where capability=$1", capability)}
         used = {r["provider"]: r["calls"] for r in await db.pool().fetch(

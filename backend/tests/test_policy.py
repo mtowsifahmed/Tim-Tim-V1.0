@@ -8,9 +8,15 @@ def test_owner_and_moderator_bypass_caps():
     assert p.daily_cap("pro", 30, 100) == 100
 
 
-def test_byok_is_pro_or_staff_only():
-    assert not p.can_use_byok("free")
-    assert all(p.can_use_byok(r) for r in ("pro", "moderator", "owner"))
+def test_everyone_may_add_their_own_key():
+    assert all(p.can_use_byok(r) for r in ("free", "pro", "moderator", "owner"))
+
+
+def test_free_plan_never_spends_the_apps_shared_keys():
+    """v1 rule: free accounts run on their own key only, so the owner's free-tier quota is never used by them."""
+    assert p.requires_own_key("free") and not p.uses_shared_keys("free")
+    assert not p.requires_own_key("pro")
+    assert all(p.uses_shared_keys(r) for r in ("pro", "moderator", "owner"))
 
 
 def test_moderator_can_grant_pro_to_ordinary_users_only():

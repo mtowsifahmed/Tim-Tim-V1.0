@@ -11,10 +11,10 @@ Tick every box before you announce. About 45 minutes the first time.
 - [ ] You signed in with **m.towsifoffical2013@gmail.com first**; the top bar says *Owner*.
 
 ## B. Limits, so the free services last
-Each chat turn uses one AI call (two for "research" requests or actions), one speech-recognition call for voice, and one voice call per spoken sentence. Free providers have daily caps (see README-PROVIDERS.md).
-- [ ] Set **`FREE_DAILY_CAP=20`** on Render for launch week (default is 30). You can raise it once you see real usage.
+**Free accounts no longer use your keys.** A free user adds their own free Google AI Studio key in Settings → API keys (one key covers chat, speech recognition and voice), so their turns never touch your provider quota. Your keys serve only you, your moderators and Pro accounts, and those are capped per day.
+- [ ] Set **`FREE_DAILY_CAP=20`** on Render for launch week (default is 30). It caps Pro/rotation turns; free accounts on their own key are unlimited.
 - [ ] Run `check-providers.bat` on your PC and fix any red line before launch.
-- [ ] If people see "limits reached" messages, add another provider key, lower `FREE_DAILY_CAP`, and invite heavy users to add their own keys (Pro).
+- [ ] If Pro users see "limits reached" messages, add another provider key to the backend or lower `FREE_DAILY_CAP`.
 
 ## C. Legal and support
 - [ ] Read `desktop/src/privacy.html` and `terms.html`. They are templates: fill in the governing law at the end of the Terms, and have a lawyer review them for your country before you rely on them.

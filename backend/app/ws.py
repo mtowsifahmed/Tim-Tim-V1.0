@@ -12,13 +12,14 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 
 from fastapi import HTTPException, WebSocket
 
 import time
 
-from . import db
-from .audio import MAX_UTTERANCE_BYTES, looks_invented, is_silent, pcm_to_wav, trim_silence
+from . import db, policy
+from .audio import MAX_UTTERANCE_BYTES, looks_invented, is_silent, pcm_to_wav, rms, seconds, trim_silence
 from .auth import CurrentUser, load_user, verify_token
 from .hub import Conn
 from .providers import stt as stt_mod
@@ -26,8 +27,15 @@ from .providers.errors import NoProviderAvailable, ProviderError
 from .status import build_status
 from .turn import DEFAULT_PERSONA, TurnIO, TurnTimeout, charge_turn, execute_turn_timed
 
+log = logging.getLogger("timtim.ws")
+
 CAP_MSG = ("You've used all of today's free voice turns. They reset at midnight UTC, "
            "or ask the owner about upgrading to Pro.")
+
+# The free plan never spends the owner's provider quota, so it needs its own key before its first turn.
+KEY_MSG = ("Tim-Tim runs on your own free Google AI key. Open Settings → API keys, paste a key from "
+           "Google AI Studio (aistudio.google.com/apikey), and you're set. It takes about a minute and costs nothing.")
+NO_SERVER_KEY_MSG = ("No AI key is set up on the server yet. Add GEMINI_API_KEY to the backend environment and restart it.")
 
 
 PERSONA_TTL = 30.0
@@ -87,6 +95,13 @@ async def run_turn(ws: WebSocket, conn: Conn, text: str, speak: bool, stt_rotati
     plans = {"llm": await rot.plan("llm", user.id, user.role)}
     if speak:
         plans["tts"] = await rot.plan("tts", user.id, user.role)
+    if not plans["llm"]:
+        # Say exactly what is missing instead of "no provider available".
+        if policy.requires_own_key(user.role):
+            await _error(conn, "key_required", KEY_MSG)
+        else:
+            await _error(conn, "no_provider", NO_SERVER_KEY_MSG)
+        return
     if not await charge_turn(user, plans, stt_rotation):
         await _error(conn, "daily_cap_reached", CAP_MSG)
         await hub.broadcast(user.id, {"type": "status", **await build_status(user, rot)})
@@ -120,11 +135,20 @@ async def run_voice_turn(ws: WebSocket, conn: Conn, pcm: bytes, wake: str | None
     # answer "thank you" to silence. Trimming also removes the long quiet head/tail that provokes it.
     pcm = trim_silence(bytes(pcm))
     if is_silent(pcm):
+        # A clip that never left the device's noise floor is the phone's microphone, not the user's wording.
+        log.info("voice clip silent: %.2fs, rms=%.4f, %d bytes", seconds(pcm), rms(pcm), len(pcm))
         await conn.send({"type": "stt_empty"}); return
     user = await load_user(conn.user_id)
     wav = pcm_to_wav(bytes(pcm))
+    plan = await rot.plan("stt", user.id, user.role)
+    if not plan:
+        if policy.requires_own_key(user.role):
+            await _error(conn, "key_required", KEY_MSG + " You can type in the meantime.")
+        else:
+            await _error(conn, "no_provider", NO_SERVER_KEY_MSG + " You can type in the meantime.")
+        return
+    log.info("voice clip: %.2fs, rms=%.4f", seconds(pcm), rms(pcm))
     try:
-        plan = await rot.plan("stt", user.id, user.role)
         r, text = await rot.run(plan, lambda r: stt_mod.transcribe(rot.http, r.spec, r.api_key, wav))
     except NoProviderAvailable as e:
         await _error(conn, "no_provider", await _no_provider_message(rot, "stt", e, user.role) + " You can type instead."); return
@@ -133,6 +157,7 @@ async def run_voice_turn(ws: WebSocket, conn: Conn, pcm: bytes, wake: str | None
     await conn.send({"type": "provider", "capability": "stt", "name": r.name, "source": r.source})
     text = (text or "").strip()
     if not text or looks_invented(text, pcm):
+        log.info("stt returned %r for %.2fs of audio -> stt_empty", text[:60], seconds(pcm))
         await conn.send({"type": "stt_empty"}); return
     if wake:
         w = wake.lower().strip()

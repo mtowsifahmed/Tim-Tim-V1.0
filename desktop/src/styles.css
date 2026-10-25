@@ -196,6 +196,9 @@ input[type=text],input[type=password]{padding:10px 12px;border-radius:11px;borde
 .pro-tag{font-size:10px;padding:2px 8px;border-radius:99px;background:#f59e0b26;color:#fbbf24;margin-left:6px;letter-spacing:0;text-transform:none;vertical-align:middle}.locked{padding:12px;border-radius:12px;background:var(--input);border:1px dashed var(--card-b);font-size:12.5px;color:var(--muted);line-height:1.5}
 .keyrow{padding:10px 12px;border-radius:12px;background:var(--input);border:1px solid var(--card-b);margin-bottom:8px}.keyrow b{font-size:13px;display:flex;justify-content:space-between}.keyrow .st{font-size:11px;color:var(--muted);font-weight:400}.keyrow .st.ok{color:#34d399}.keyrow .st.bad{color:#f87171}
 .keyrow .kr{display:flex;gap:6px;margin-top:8px}.keyrow select{flex:0 0 120px}.keyrow input{flex:1}.keyrow .ka{display:flex;gap:6px;margin-top:8px}
+.keyone{padding:12px;border-radius:12px;background:color-mix(in srgb,var(--accent) 9%,var(--input));border:1px solid color-mix(in srgb,var(--accent) 45%,var(--card-b));margin-bottom:10px}
+.keyone b{font-size:13px;display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px}.keyone .st{font-size:11px;color:var(--muted);font-weight:400}.keyone .st.ok{color:#34d399}.keyone .st.bad{color:#f87171}
+.keyone .hint{margin:6px 0 8px;font-size:12px;line-height:1.5;color:var(--muted)}.keyone .kr{display:flex;gap:6px}.keyone input{flex:1;min-width:0}
 .keybtns{display:flex;gap:6px;justify-content:flex-end;margin:0 0 4px}.hint.bad{color:#f87171}
 #web-key-box input{flex:0 0 175px}
 

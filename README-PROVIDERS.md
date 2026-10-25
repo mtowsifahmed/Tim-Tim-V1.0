@@ -45,5 +45,5 @@ Not included on purpose: Google Cloud and Azure speech need a billing account wi
 ## Supabase (database + login), free plan
 Free projects pause after about a week without activity (open the dashboard to wake it). The built-in email sender allows only a few emails per hour; use a free SMTP sender for more.
 
-## Pro users and their own keys
-Pro (granted by you in the admin panel) can paste their own keys under Settings → API keys. Requests then go straight to their provider, never through your rotation, and their limit is whatever their own plan allows.
+## Your own key (every account, required on the free plan)
+Anyone signed in can paste a key under Settings → API keys; the free plan **must**, because it never uses your rotation. One Google AI Studio key covers chat, speech recognition and voice (`POST /keys/one-key`). Requests go straight to that provider, never through your rotation, and the limit is whatever that provider plan allows. Pro and staff may still use your rotation, capped by `FREE_DAILY_CAP` / `PRO_ROTATION_DAILY_CAP`.

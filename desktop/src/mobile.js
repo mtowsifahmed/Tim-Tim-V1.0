@@ -6,7 +6,7 @@
   .mnav{display:none}
   @media (max-width:820px){
     html,body{height:100%;overscroll-behavior:none}
-    .shell{height:100dvh;padding:6px 6px 64px;gap:6px}
+    .shell{height:100dvh;padding:6px 6px 128px;gap:6px}
     .bar{padding:6px 8px;gap:6px}.brand strong,.tag,#wifi,#theme-t{display:none}.logo{width:30px;height:30px}
     #conn-t{max-width:34vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.chip-btn{padding:6px 9px;font-size:12px}
     .cols{display:block;flex:1;min-height:0;position:relative}
@@ -23,6 +23,8 @@
     .core-foot{bottom:10px}.core-foot canvas{width:50px}
     .think-pill{top:8px;padding:5px 12px;font-size:10.5px}
     .composer{margin:8px 8px 10px}.mic{width:46px;height:46px}.mic svg{width:20px;height:20px}
+    /* The composer is docked above the tab bar so it follows you to Core, Team and World. */
+    .composer.docked{position:fixed;left:0;right:0;bottom:calc(58px + env(safe-area-inset-bottom));z-index:44;margin:0;padding:8px 10px;border-radius:0;border-left:0;border-right:0;border-bottom:0;background:var(--panel);box-shadow:0 -8px 24px rgba(0,0,0,.35)}
     .as-pane{padding:10px}
     .menu{max-width:92vw}.drawer-panel{width:100%}
     .mnav{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:45;height:58px;padding-bottom:env(safe-area-inset-bottom);background:var(--panel);border-top:1px solid var(--card-b)}
@@ -36,6 +38,27 @@
   document.body.appendChild(nav);
   const set = m => { document.body.dataset.m = m; nav.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.m === m)); window.dispatchEvent(new Event('resize')); };
   nav.addEventListener('click', e => { const b = e.target.closest('button'); if (b) set(b.dataset.m); });
+  // ───── keep the chat box on every tab ─────
+  // It lives inside the chat column, which the tab bar hides, so on a phone it is moved next to the tab bar
+  // (a fixed bottom bar) instead of disappearing with the column.
+  const composer = document.getElementById('composer');
+  const card = composer && composer.parentElement, after = composer && composer.nextSibling;
+  const narrow = () => matchMedia('(max-width:820px)').matches;
+  function dock() {
+    if (!composer) return;
+    if (narrow()) {
+      if (composer.parentElement !== document.body) document.body.appendChild(composer);
+      composer.classList.add('docked');
+    } else {
+      if (composer.parentElement !== card) card.insertBefore(composer, after);
+      composer.classList.remove('docked');
+    }
+  }
+  dock();
+  addEventListener('resize', dock);
+  if (window.matchMedia) { try { matchMedia('(max-width:820px)').addEventListener('change', dock); } catch (_) {} }
+  // Sending from another tab jumps to Chat, so the reply is visible instead of landing in a hidden column.
+  if (composer) composer.addEventListener('submit', () => { if (!narrow() || document.body.dataset.m === 'chat') return; set('chat'); });
   set('chat');
   const mic = document.getElementById('mic'); if (mic) mic.addEventListener('contextmenu', e => e.preventDefault());
 })();

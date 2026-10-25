@@ -4,20 +4,31 @@
   const TT = window.TT, V = TT.voice = { mode: 'ptt', wake: 'hey tim', speakReplies: true, micOn: false, recording: false, playing: false, micError: '', deviceId: '', devices: [] };
   let ctx, stream, src, proc, mute, analyser, outGain, floor = 0.004, loud = 0, quiet = 0, ring = [], recStart = 0, gotResponse = true, fillerT = null, vadHold = 0;
   let pttHeld = false, pttGen = 0; const MIN_TAP_MS = 350;
+  let peak = 0;                        // loudest frame of the clip being recorded
+  // Below this the clip is silence, not speech (-48 dBFS): sending it makes the speech model invent something,
+  // and the backend answers "I didn't catch that", which blames the user for a muted microphone.
+  const SILENT_PEAK = 0.004;
   let nextTime = 0, sources = new Set(), decoded = new Map(), nextSeq = 1, pendingDecode = 0, turnDone = true, meter = 0;
 
   async function audio() { if (!ctx) { ctx = new (window.AudioContext || window.webkitAudioContext)(); outGain = ctx.createGain(); analyser = ctx.createAnalyser(); analyser.fftSize = 512; outGain.connect(analyser); analyser.connect(ctx.destination); } if (ctx.state !== 'running') await ctx.resume(); return ctx; }
 
   // ───────── microphone ─────────
-  V.startMic = async () => {
-    if (V.micOn) return true;
+  // Push-to-talk only records while the button is held, so it wants the raw microphone. Android's voice
+  // processing (echo cancellation + noise suppression) can hand back near-silence in a browser, which is
+  // exactly the "it turns on but hears nothing" case. Hands-free keeps the processed stream for echo safety.
+  const constraintsFor = () => V.mode === 'ptt'
+    ? { channelCount: 1, echoCancellation: false, noiseSuppression: false, autoGainControl: true }
+    : { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 };
+  V.startMic = async (force) => {
+    if (V.micOn && !force) return true;
+    if (V.micOn) V.stopMic();
     try {
       await audio();
-      const audio_constraints = { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 };
+      const audio_constraints = constraintsFor();
       // Lock onto the microphone the user picked; if that device vanished, fall back to the default one.
       try { stream = await navigator.mediaDevices.getUserMedia({ audio: V.deviceId ? { ...audio_constraints, deviceId: { exact: V.deviceId } } : audio_constraints }); }
       catch (e) { if (!V.deviceId || e.name !== 'OverconstrainedError') throw e; stream = await navigator.mediaDevices.getUserMedia({ audio: audio_constraints }); }
-    } catch (e) { V.micError = e.name === 'NotAllowedError' ? 'Microphone permission was denied.' : 'No microphone available.'; TT.emit('mic', { error: V.micError }); return false; }
+    } catch (e) { V.micError = e.name === 'NotAllowedError' ? 'Microphone permission was denied.' : 'No microphone available.'; V.micOn = false; TT.emit('mic', { error: V.micError }); return false; }
     src = ctx.createMediaStreamSource(stream); proc = ctx.createScriptProcessor(4096, 1, 1); mute = ctx.createGain(); mute.gain.value = 0;
     proc.onaudioprocess = onFrame; src.connect(proc); proc.connect(mute); mute.connect(ctx.destination); V.micOn = true; V.micError = ''; TT.emit('mic', { on: true });
     listDevices(); return true;
@@ -45,7 +56,7 @@
   }
   function onFrame(e) {
     const f = e.inputBuffer.getChannelData(0); let sum = 0; for (let i = 0; i < f.length; i++) sum += f[i] * f[i];
-    const rms = Math.sqrt(sum / f.length); meter = rms; const chunk = pcm16k(f);
+    const rms = Math.sqrt(sum / f.length); meter = rms; if (rms > peak) peak = rms; const chunk = pcm16k(f);
     if (V.recording) { TT.net.sendBinary(chunk.buffer); if (V.mode !== 'ptt') { if (rms < Math.max(0.012, floor * 2.5)) { quiet++; if (quiet * f.length / ctx.sampleRate > 0.95) endUtterance(); } else quiet = 0; } if (Date.now() - recStart > 58000) endUtterance(); return; }
     ring.push(chunk); if (ring.length > 5) ring.shift();
     if (V.mode === 'ptt' || TT.paused) return;
@@ -57,7 +68,7 @@
   function beginUtterance(withPre) {
     if (V.recording || TT.paused) return;
     if (V.playing || !turnDone) V.interrupt();                                                    // barge-in
-    V.recording = true; quiet = 0; recStart = Date.now(); TT.net.send({ type: 'audio_start' });
+    V.recording = true; quiet = 0; peak = 0; recStart = Date.now(); TT.net.send({ type: 'audio_start' });
     if (withPre) ring.forEach(c => TT.net.sendBinary(c.buffer)); ring = []; TT.emit('rec', { on: true });
   }
   function endUtterance() {
@@ -82,10 +93,13 @@
   V.pttStop = () => {
     pttHeld = false; pttGen++;
     if (!V.recording) return;                                   // released before the mic opened: nothing was sent
-    if (Date.now() - recStart < MIN_TAP_MS) { cancelUtterance(); TT.emit('toast', 'Hold Space while you speak.'); return; }
+    if (Date.now() - recStart < MIN_TAP_MS) { cancelUtterance(); TT.emit('toast', 'Hold the mic button while you speak.'); return; }
+    if (peak < SILENT_PEAK) { cancelUtterance(); TT.emit('micsilent', { peak }); return; }   // muted mic, not bad speech
     endUtterance();
   };
-  V.setMode = async m => { V.mode = m; pttHeld = false; pttGen++; if (m === 'ptt') { if (V.recording) cancelUtterance(); } else await V.startMic(); TT.emit('voicemode', m); };
+  // Switching mode changes the capture constraints, so the stream has to be reopened.
+  V.setMode = async m => { V.mode = m; pttHeld = false; pttGen++; if (V.recording) cancelUtterance(); if (V.micOn) await V.startMic(true); TT.emit('voicemode', m); };
+  V.restartMic = async () => { if (V.micOn) await V.startMic(true); };
   V.noteResponse = () => { gotResponse = true; clearTimeout(fillerT); };
   V.turnStarted = () => { turnDone = false; gotResponse = false; };
   V.turnFinished = () => { turnDone = true; checkEnd(); };
